@@ -1,0 +1,39 @@
+{
+  "model": {
+    "name": "BAAI/bge-small-zh-v1.5",
+    "batch_size": 512,
+    "max_length": null,
+    "device": "cuda"
+  },
+  "faiss": {
+    "index_type": "IndexFlatIP",
+    "normalize_l2": true,
+    "nprobe": null
+  },
+  "processing": {
+    "batch_size": 2000,
+    "cache_dir": "./joblib_cache",
+    "max_cache_size": 10000,
+    "drop_texts": [
+      "在中国法律允许",
+      "依法须经批准的项目",
+      "经相关部门批准后方可开展经营活动",
+      "法律、法规、国务院决定规定应当许可（审批）的",
+      "经相关部门批准后依批准的内容开展经营活动",
+      "具体经营项目以审批结果为准",
+      ""
+    ]
+  },
+  "data": {
+    "industry_file": "./data/国民经济分类_2.14.csv",
+    "chunks_dir": "./chunks",
+    "output_file": "JobMatching_Results_BGE_FAISS.csv",
+    "encoding": "utf-8"
+  },
+  "log": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "matching.log",
+    "console": true
+  }
+}

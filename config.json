@@ -1,0 +1,38 @@
+{
+    "model": {
+        "name": "BAAI/bge-small-zh-v1.5",
+        "device": "auto",
+        "batch_size": 512,
+        "max_length": 512
+    },
+    "faiss": {
+        "index_type": "IndexFlatIP",
+        "normalize_l2": true,
+        "nprobe": 1
+    },
+    "processing": {
+        "batch_size": 2000,
+        "enable_cache": true,
+        "cache_type": "lru_cache",
+        "cache_size": 500,
+        "text_cleaning": {
+            "remove_html": true,
+            "remove_urls": true,
+            "remove_punctuation": true,
+            "remove_brackets": true,
+            "remove_numbers": false,
+            "remove_whitespace": true
+        }
+    },
+    "data": {
+        "industry_file": "./data/国民经济分类_2.14.csv",
+        "chunks_dir": "./chunks",
+        "output_file": "./matching_results.csv",
+        "encoding": "utf-8"
+    },
+    "log": {
+        "level": "INFO",
+        "file": "./matching.log",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    }
+}

@@ -1,0 +1,56 @@
+# 企业经营范围与行业分类匹配系统 - 依赖包
+# Enterprise Business Scope and Industry Classification Matching System - Dependencies
+
+# 核心机器学习库 / Core ML Libraries
+torch>=1.9.0,<3.0.0
+sentence-transformers>=2.2.0,<3.0.0
+faiss-cpu>=1.7.0,<2.0.0
+# 如果有GPU，可以替换为: faiss-gpu>=1.7.0,<2.0.0
+# For GPU support, replace with: faiss-gpu>=1.7.0,<2.0.0
+
+# 数据处理 / Data Processing
+pandas>=1.3.0,<3.0.0
+numpy>=1.21.0,<2.0.0
+scipy>=1.7.0,<2.0.0
+
+# 进度条和缓存 / Progress Bar and Caching
+tqdm>=4.62.0,<5.0.0
+joblib>=1.1.0,<2.0.0
+
+# 文本处理 / Text Processing
+jieba>=0.42.1  # 中文分词
+regex>=2021.8.3  # 正则表达式增强
+
+# 配置管理 / Configuration Management
+PyYAML>=5.4.0,<7.0.0
+
+# 日志和监控 / Logging and Monitoring
+loguru>=0.5.3,<1.0.0  # 可选的日志库
+
+# 开发和测试工具 / Development and Testing Tools
+pytest>=6.0.0,<8.0.0
+pytest-cov>=2.12.0,<5.0.0
+black>=21.0.0,<24.0.0
+flake8>=3.9.0,<7.0.0
+isort>=5.9.0,<6.0.0
+
+# 类型检查 / Type Checking
+mypy>=0.910,<2.0.0
+types-PyYAML>=6.0.0
+
+# 性能分析 / Performance Profiling
+memory-profiler>=0.60.0,<1.0.0
+psutil>=5.8.0,<6.0.0
+
+# 可选依赖 / Optional Dependencies
+# transformers>=4.20.0,<5.0.0  # 如果需要更多预训练模型
+# datasets>=2.0.0,<3.0.0       # 如果需要处理大型数据集
+# matplotlib>=3.5.0,<4.0.0     # 如果需要可视化
+# seaborn>=0.11.0,<1.0.0        # 如果需要统计可视化
+# plotly>=5.0.0,<6.0.0          # 如果需要交互式图表
+
+# 安装说明 / Installation Instructions:
+# 基础安装: pip install -r requirements.txt
+# GPU版本: 先安装基础依赖，然后运行 pip install faiss-gpu --force-reinstall
+# Basic install: pip install -r requirements.txt
+# GPU version: Install basic dependencies first, then run pip install faiss-gpu --force-reinstall
