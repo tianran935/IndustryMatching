@@ -117,12 +117,15 @@ class JobMatcher:
     def process_enterprises(self) -> List[Dict]:
         """处理企业数据"""
         all_results = []
+        chunk_counter = 0
+        output_counter = 1
         
         try:
             log_info("开始处理企业数据...")
             start_time = time.time()
             
             for chunk_name, chunk_df in tqdm(self.enterprise_chunks, desc="处理数据分块"):
+                chunk_counter += 1
                 log_info(f"正在处理分块: {chunk_name} ({len(chunk_df)} 条记录)")
                 
                 # 处理经营范围 - 分批处理以减少内存使用
@@ -224,11 +227,38 @@ class JobMatcher:
                 self.stats['processed_enterprises'] += len(valid_chunk_df)
                 
                 log_info(f"分块 {chunk_name} 处理完成，匹配 {len([r for r in match_results if r])} 条")
+                
+                # 每1000个chunks输出一次结果
+                if chunk_counter % 1000 == 0:
+                    log_info(f"已处理 {chunk_counter} 个chunks，开始输出第 {output_counter} 批结果...")
+                    
+                    # 保存当前批次的结果
+                    if all_results:
+                        batch_output_file = f"{self.config.data.output_file.rsplit('.', 1)[0]}_batch_{output_counter}.csv"
+                        temp_output_file = self.data_processor.save_results(all_results, batch_output_file)
+                        log_info(f"第 {output_counter} 批结果已保存到: {temp_output_file}")
+                        
+                        # 打印当前批次统计信息
+                        current_time = time.time() - start_time
+                        log_info(f"当前批次统计 - 已处理: {self.stats['processed_enterprises']:,} 条, 已匹配: {self.stats['matched_enterprises']:,} 条")
+                        log_info(f"当前耗时: {current_time:.2f}秒, 平均速度: {self.stats['processed_enterprises']/max(current_time, 1):.2f} 条/秒")
+                        
+                        output_counter += 1
+                        # 清空结果列表以释放内存
+                        all_results = []
+            
+            # 处理剩余的结果（如果有的话）
+            if all_results:
+                log_info(f"处理剩余的 {len(all_results)} 条结果...")
+                final_output_file = f"{self.config.data.output_file.rsplit('.', 1)[0]}_batch_{output_counter}.csv"
+                temp_output_file = self.data_processor.save_results(all_results, final_output_file)
+                log_info(f"最终批次结果已保存到: {temp_output_file}")
             
             self.stats['process_time'] = time.time() - start_time
             log_info(f"企业数据处理完成，耗时: {self.stats['process_time']:.2f}秒")
+            log_info(f"总共输出了 {output_counter if all_results else output_counter-1} 个批次文件")
             
-            return all_results
+            return []  # 返回空列表，因为结果已经分批保存
             
         except Exception as e:
             log_exception(f"企业数据处理失败: {e}")
@@ -283,17 +313,17 @@ class JobMatcher:
             if not self.initialize_matcher():
                 return False
             
-            # 4. 处理企业数据
+            # 4. 处理企业数据（结果已在处理过程中分批保存）
             results = self.process_enterprises()
             
-            # 5. 保存结果
-            output_file = self.save_results(results)
+            # 5. 结果已在处理过程中分批保存，无需再次保存
+            log_info("所有结果已分批保存完成")
             
             # 6. 统计信息
             self.stats['total_time'] = time.time() - total_start_time
             self.print_statistics()
             
-            log_info(f"匹配流程完成！结果已保存到: {output_file}")
+            log_info("匹配流程完成！结果已分批保存到多个文件")
             return True
             
         except Exception as e:

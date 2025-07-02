@@ -48,11 +48,13 @@ class ModelManager:
             return self.model
         
         try:
-            log_info(f"正在加载BGE模型: {self.config.name}")
+            # 使用本地模型路径
+            local_model_path = "models--BAAI--bge-small-zh-v1.5/snapshots/7999e1d3359715c523056ef9478215996d62a620"
+            log_info(f"正在加载本地BGE模型: {local_model_path}")
             start_time = time.time()
             
             self.model = SentenceTransformer(
-                self.config.name,
+                local_model_path,
                 device=self.device
             )
             
