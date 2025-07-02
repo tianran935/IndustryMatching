@@ -132,7 +132,7 @@ class JobMatcher:
                 business_scopes = chunk_df['经营范围'].fillna('').tolist()
                 
                 # 分批处理，避免内存问题
-                batch_size = min(200, len(business_scopes))  # 增大批次大小
+                batch_size = min(1000, len(business_scopes))  # 增大批次大小
                 processed_scopes = []
                 
                 for i in range(0, len(business_scopes), batch_size):
@@ -185,7 +185,7 @@ class JobMatcher:
                             行业小类 = ''
                         
                         result_record = {
-                            '企业代码': row.get('统一社会信用代码', ''),
+                            '企业代码': row.get('newgcid', ''),
                             '匹配行业': best_match['industry_name'],
                             '行业代码': best_match['industry_code'],
                             '门类代码': 门类代码,
@@ -196,7 +196,7 @@ class JobMatcher:
                             'newgcid': '',  # 这个字段需要根据具体需求填充
                             '行业小类': 行业小类,
                             '企业名称': row.get('企业名称', ''),
-                            '统一社会信用代码': row.get('统一社会信用代码', ''),
+                            '统一社会信用代码': row.get('newgcid', ''),
                             '匹配片段': best_match['segment'],
                             '数据来源': chunk_name
                         }
@@ -206,7 +206,7 @@ class JobMatcher:
                     else:
                         # 无匹配结果
                         result_record = {
-                            '企业代码': row.get('统一社会信用代码', ''),
+                            '企业代码': row.get('newgcid', ''),
                             '匹配行业': '',
                             '行业代码': '',
                             '门类代码': '',

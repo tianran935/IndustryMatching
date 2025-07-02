@@ -1,7 +1,7 @@
 {
   "model": {
     "name": "BAAI/bge-small-zh-v1.5",
-    "batch_size": 512,
+    "batch_size": 4096,
     "max_length": null,
     "device": "cuda"
   },
