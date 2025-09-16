@@ -14,6 +14,8 @@ from typing import List, Dict, Tuple, Optional
 from functools import lru_cache
 from joblib import Memory
 from tqdm import tqdm
+# 新增：导入 joblib 的 dump/load 以便在模块内直接使用
+from joblib import dump, load
 
 from config import ProcessingConfig, DataConfig
 from logger import log_info, log_warning, log_error, log_exception
@@ -27,7 +29,7 @@ class TextCleaner:
         
         # 预编译正则表达式
         self.html_pattern = re.compile(r'<[^>]+>')
-        self.url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+        self.url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!\*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
         self.bracket_pattern = re.compile(r'[（）()【】\[\]{}「」『』〈〉《》]')
         self.number_pattern = re.compile(r'\d+')
         self.whitespace_pattern = re.compile(r'\s+')
@@ -127,42 +129,66 @@ class DataLoader:
             raise
     
     def load_enterprise_chunks(self) -> List[Tuple[str, pd.DataFrame]]:
-        """加载企业数据分块"""
+        """加载企业数据分块（从data目录读取原始xlsx，并用joblib分块）"""
+        """改变接口，删除函数返回值"""
         try:
-            log_info(f"正在加载企业数据分块: {self.config.chunks_dir}")
+            # 直接读取配置中的 input_file（.dta 文件）
+            input_file = getattr(self.config, 'input_file', None)
+            if not input_file:
+                raise FileNotFoundError("未配置 data.input_file，请在配置中指定 .dta 文件路径")
+            if not os.path.isfile(input_file):
+                raise FileNotFoundError(f"输入文件不存在: {input_file}")
+            log_info(f"正在从原始 Stata 文件读取企业数据: {input_file}")
             
-            chunk_files = [f for f in os.listdir(self.config.chunks_dir) 
-                          if f.endswith('.csv')]
+            # 读取 .dta（整个表）
+            df = pd.read_stata(input_file)
             
-            if not chunk_files:
-                raise FileNotFoundError(f"在 {self.config.chunks_dir} 中未找到CSV文件")
+            # 验证必要的列
+            if 'jing_ying_fan_wei' not in df.columns:
+                raise ValueError(f"原始数据缺少'jing_ying_fan_wei'列，实际列名: {list(df.columns)}")
             
-            chunks = []
+            # 确保分块输出目录存在（沿用配置中的 chunks_dir）
+            os.makedirs(self.config.chunks_dir, exist_ok=True)
+            
+            total = len(df)
+            if total == 0:
+                log_warning("原始数据为空，无数据可处理")
+                return []
+            
+            # 设置分块大小与分块数
+            chunk_size = 1000  # 可按需调整
+            n_chunks = (total + chunk_size - 1) // chunk_size
+            
+            chunks: List[Tuple[str, pd.DataFrame]] = []
             total_records = 0
             
-            for chunk_file in sorted(chunk_files):
-                chunk_path = os.path.join(self.config.chunks_dir, chunk_file)
+            for i in range(n_chunks):
+                start = i * chunk_size
+                end = min((i + 1) * chunk_size, total)
+                chunk = df.iloc[start:end].copy()
+                
+                chunk_name = f"chunk_{i}.joblib"
+                chunk_path = os.path.join(self.config.chunks_dir, chunk_name)
+                
+                # 将分块以 joblib 格式持久化到磁盘
                 try:
-                    df = pd.read_csv(chunk_path, encoding=self.config.encoding)
-                    
-                    # 验证必要的列
-                    if '经营范围' not in df.columns:
-                        log_warning(f"文件 {chunk_file} 缺少'经营范围'列，跳过")
-                        continue
-                    
-                    chunks.append((chunk_file, df))
-                    total_records += len(df)
-                    
+                    dump(chunk, chunk_path)
                 except Exception as e:
-                    log_error(f"加载文件 {chunk_file} 失败: {e}")
-                    continue
+                    log_warning(f"保存分块失败 {chunk_name}: {e}")
+                
+                # # 加入返回列表（保持原有接口结构）
+                # chunks.append((chunk_name, chunk))
+                # total_records += len(chunk)
             
-            log_info(f"成功加载 {len(chunks)} 个数据分块，共 {total_records} 条记录")
-            return chunks
+            # 释放内存
+            del df
             
+            log_info(f"成功生成并加载 {len(chunks)} 个数据分块，共 {total_records} 条记录")
+            # return chunks
         except Exception as e:
             log_exception(f"加载企业数据失败: {e}")
             raise
+   
     
     def save_results(self, results: List[Dict], output_file: Optional[str] = None) -> str:
         """保存匹配结果"""
@@ -263,3 +289,5 @@ class DataProcessor:
     def save_results(self, results: List[Dict], output_file: Optional[str] = None) -> str:
         """保存结果"""
         return self.data_loader.save_results(results, output_file)
+    
+      

@@ -47,8 +47,11 @@ class DataConfig:
     """数据文件配置"""
     industry_file: str = './data/国民经济分类_2.14.csv'
     chunks_dir: str = './chunks'
-    output_file: str = 'JobMatching_Results_BGE_FAISS.csv'
+    input_file: str = "./data/merged_data.dta"
+    output_file: str = "results.csv"
     encoding: str = 'utf-8'
+        
+        
     
     def validate_paths(self) -> bool:
         """验证文件路径是否存在"""

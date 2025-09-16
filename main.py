@@ -10,9 +10,11 @@ import time
 import argparse
 from typing import List, Dict, Optional
 from tqdm import tqdm
+from joblib import Parallel, delayed
+from joblib import dump, load  # 新增：在本模块内直接使用 dump/load
 
 from config import Config, default_config
-from logger import setup_logger, log_info, log_warning, log_error, log_exception
+from logger import setup_logger, get_logger, log_info, log_warning, log_error, log_exception
 from data_processor import DataProcessor
 from matcher import OptimizedMatcher
 
@@ -81,15 +83,28 @@ class JobMatcher:
             self.industry_df, self.industry_names = self.data_processor.load_and_process_industry_data()
             
             # 加载企业数据
-            self.enterprise_chunks = self.data_processor.load_enterprise_data()
+            chunks_dir = self.config.data.chunks_dir
+            try:
+                has_chunks = os.path.isdir(chunks_dir) and any(
+                    f.endswith(".joblib") and not f.endswith("_result.joblib")
+                    for f in os.listdir(chunks_dir)
+                )
+            except Exception:
+                has_chunks = False
+            
+            if not has_chunks:
+                log_info(f"chunks 目录不存在或为空，将生成/加载企业分块数据: {chunks_dir}")
+                self.data_processor.load_enterprise_data()
+            else:
+                log_info(f"检测到现有分块文件，跳过企业数据加载: {chunks_dir}")
             
             # 统计企业总数
-            self.stats['total_enterprises'] = sum(len(chunk[1]) for chunk in self.enterprise_chunks)
+            # self.stats['total_enterprises'] = sum(len(chunk[1]) for chunk in self.enterprise_chunks)
             
             self.stats['load_time'] = time.time() - start_time
             log_info(f"数据加载完成，耗时: {self.stats['load_time']:.2f}秒")
-            log_info(f"行业数量: {len(self.industry_names)}")
-            log_info(f"企业数量: {self.stats['total_enterprises']}")
+            # log_info(f"行业数量: {len(self.industry_names)}")
+            # log_info(f"企业数量: {self.stats['total_enterprises']}")
             
             return True
             
@@ -116,150 +131,182 @@ class JobMatcher:
     
     def process_enterprises(self) -> List[Dict]:
         """处理企业数据"""
-        all_results = []
-        chunk_counter = 0
-        output_counter = 1
+        # all_results = []
+        # chunk_counter = 0
+        # output_counter = 1
         
         try:
             log_info("开始处理企业数据...")
             start_time = time.time()
-            
-            for chunk_name, chunk_df in tqdm(self.enterprise_chunks, desc="处理数据分块"):
-                chunk_counter += 1
-                log_info(f"正在处理分块: {chunk_name} ({len(chunk_df)} 条记录)")
+
+            chunks_dir = self.config.data.chunks_dir
+            results_dir = os.path.join(chunks_dir, "results_joblib")
+            os.makedirs(results_dir, exist_ok=True)
+
+            if not os.path.isdir(chunks_dir):
+                log_warning(f"chunks 目录不存在: {chunks_dir}")
+                self.stats['process_time'] = time.time() - start_time
+                return []
+
+            # 枚举 chunks 目录下的 joblib 分块文件（排除已保存的结果文件）
+            all_files = os.listdir(chunks_dir)
+            chunk_files = [
+                os.path.join(chunks_dir, f)
+                for f in all_files
+                if f.endswith(".joblib") and not f.endswith("_result.joblib")
+            ]
+            chunk_files.sort()
+
+            if not chunk_files:
+                log_warning(f"未在 {chunks_dir} 找到任何 .joblib 分块文件")
+                self.stats['process_time'] = time.time() - start_time
+                return []
+
+            # 先处理断点续处理：已有结果的分块直接统计并跳过
+            files_to_process = []
+            for cf in chunk_files:
+                chunk_name = os.path.basename(cf)
+                result_path = os.path.join(results_dir, f"{os.path.splitext(chunk_name)[0]}_result.joblib")
+                if os.path.exists(result_path):
+                    try:
+                        prev_results = load(result_path)
+                        self.stats['processed_enterprises'] += len(prev_results)
+                        matched_count = sum(
+                            1 for r in prev_results
+                            if r.get('行业代码') or (r.get('相似度', 0) and r.get('相似度', 0) > 0)
+                        )
+                        self.stats['matched_enterprises'] += matched_count
+                        log_info(f"检测到已存在结果，跳过分块: {chunk_name} (已有 {len(prev_results)} 条)")
+                    except Exception as e:
+                        log_warning(f"加载已存在结果失败，将重新处理分块 {chunk_name}: {e}")
+                        files_to_process.append(cf)
+                else:
+                    files_to_process.append(cf)
+
+            # 单个分块处理函数（供并行调用）
+            def _process_one_chunk(chunk_file: str):
+                # 确保子进程中已初始化日志（Windows/loky 子进程为全新进程）
+                try:
+                    get_logger()
+                except Exception:
+                    try:
+                        setup_logger(self.config.log)
+                    except Exception:
+                        pass
                 
-                # 处理经营范围 - 分批处理以减少内存使用
-                business_scopes = chunk_df['经营范围'].fillna('').tolist()
-                
-                # 分批处理，避免内存问题
-                batch_size = min(1000, len(business_scopes))  # 增大批次大小
-                processed_scopes = []
-                
-                for i in range(0, len(business_scopes), batch_size):
-                    batch = business_scopes[i:i+batch_size]
-                    batch_processed = []
-                    for scope_text in batch:
-                        batch_processed.append(self.data_processor.scope_processor.process_business_scope(scope_text))
-                    processed_scopes.extend(batch_processed)
-                
-                # 过滤空的经营范围
-                valid_indices = [i for i, scope in enumerate(processed_scopes) if scope]
-                
-                if not valid_indices:
-                    log_warning(f"分块 {chunk_name} 中没有有效的经营范围")
-                    continue
-                
-                valid_scopes = [processed_scopes[i] for i in valid_indices]
-                valid_chunk_df = chunk_df.iloc[valid_indices].copy()
-                
-                # 执行匹配 - 分批处理
-                log_info(f"正在匹配 {len(valid_scopes)} 个有效经营范围...")
-                match_results = []
-                match_batch_size = min(500, len(valid_scopes))  # 进一步增大匹配批次
-                
-                for i in range(0, len(valid_scopes), match_batch_size):
-                    batch_scopes = valid_scopes[i:i+match_batch_size]
-                    batch_results = self.matcher.match_business_scopes(batch_scopes, top_k=1)
-                    match_results.extend(batch_results)
-                
-                # 构建结果记录
-                for i, (_, row) in enumerate(valid_chunk_df.iterrows()):
-                    matches = match_results[i] if i < len(match_results) else []
-                    
-                    if matches:
-                        # 取最佳匹配
-                        best_match = max(matches, key=lambda x: x['similarity'])
-                        
-                        # 从行业数据中获取完整信息
-                        industry_info = self.industry_df[self.industry_df['小类'] == best_match['industry_code']]
-                        if not industry_info.empty:
-                            industry_row = industry_info.iloc[0]
-                            门类代码 = industry_row.get('门类', '')
-                            大类代码 = industry_row.get('大类', '')
-                            大类 = industry_row.get('大类类别', '')
-                            行业小类 = industry_row.get('类别名称', '')
+                chunk_name = os.path.basename(chunk_file)
+                result_path = os.path.join(results_dir, f"{os.path.splitext(chunk_name)[0]}_result.joblib")
+                try:
+                    chunk_df = load(chunk_file)
+
+                    # 处理jing_ying_fan_wei（分批）
+                    business_scopes = chunk_df['jing_ying_fan_wei'].fillna('').tolist()
+                    batch_size = min(1000, len(business_scopes))
+                    processed_scopes = []
+                    for i in range(0, len(business_scopes), batch_size):
+                        batch = business_scopes[i:i+batch_size]
+                        batch_processed = []
+                        for scope_text in batch:
+                            batch_processed.append(self.data_processor.scope_processor.process_business_scope(scope_text))
+                        processed_scopes.extend(batch_processed)
+
+                    # 过滤空的jing_ying_fan_wei
+                    valid_indices = [i for i, scope in enumerate(processed_scopes) if scope]
+                    if not valid_indices:
+                        dump([], result_path)
+                        log_warning(f"分块 {chunk_name} 中没有有效的经营范围")
+                        return (chunk_name, 0, 0)
+
+                    valid_scopes = [processed_scopes[i] for i in valid_indices]
+                    valid_chunk_df = chunk_df.iloc[valid_indices].copy()
+
+                    # 匹配（分批）
+                    match_results = []
+                    match_batch_size = min(500, len(valid_scopes))
+                    for i in range(0, len(valid_scopes), match_batch_size):
+                        batch_scopes = valid_scopes[i:i+match_batch_size]
+                        batch_results = self.matcher.match_business_scopes(batch_scopes, top_k=1)
+                        match_results.extend(batch_results)
+
+                    # 构建并保存结果
+                    per_chunk_results = []
+                    matched_count_local = 0
+                    for i, (_, row) in enumerate(valid_chunk_df.iterrows()):
+                        matches = match_results[i] if i < len(match_results) else []
+                        if matches:
+                            # 取最佳匹配
+                            best_match = max(matches, key=lambda x: x['similarity'])
+
+                            # 从行业数据中获取完整信息
+                            industry_info = self.industry_df[self.industry_df['小类'] == best_match['industry_code']]
+                            if not industry_info.empty:
+                                industry_row = industry_info.iloc[0]
+                                门类代码 = industry_row.get('门类', '')
+                                大类代码 = industry_row.get('大类', '')
+                                大类 = industry_row.get('大类类别', '')
+                                行业小类 = industry_row.get('类别名称', '')
+                            else:
+                                门类代码 = ''
+                                大类代码 = ''
+                                大类 = ''
+                                行业小类 = ''
+
+                            result_record = {
+                                '企业代码': row.get('newgcid', ''),
+                                '匹配行业': best_match['industry_name'],
+                                '行业代码': best_match['industry_code'],
+                                '门类代码': 门类代码,
+                                '大类代码': 大类代码,
+                                '大类': 大类,
+                                '经营范围': row.get('jing_ying_fan_wei', ''),
+                                '相似度': best_match['similarity'],
+                                '行业小类': 行业小类,
+                                '企业名称': row.get('qi_ye_ming_cheng', ''),
+                                '匹配片段': best_match['segment'],
+                                '数据来源': chunk_name
+                            }
+                            per_chunk_results.append(result_record)
+                            matched_count_local += 1
                         else:
-                            门类代码 = ''
-                            大类代码 = ''
-                            大类 = ''
-                            行业小类 = ''
-                        
-                        result_record = {
-                            '企业代码': row.get('newgcid', ''),
-                            '匹配行业': best_match['industry_name'],
-                            '行业代码': best_match['industry_code'],
-                            '门类代码': 门类代码,
-                            '大类代码': 大类代码,
-                            '大类': 大类,
-                            '经营范围': row.get('经营范围', ''),
-                            '相似度': best_match['similarity'],
-                            'newgcid': '',  # 这个字段需要根据具体需求填充
-                            '行业小类': 行业小类,
-                            '企业名称': row.get('企业名称', ''),
-                            '统一社会信用代码': row.get('newgcid', ''),
-                            '匹配片段': best_match['segment'],
-                            '数据来源': chunk_name
-                        }
-                        
-                        all_results.append(result_record)
-                        self.stats['matched_enterprises'] += 1
-                    else:
-                        # 无匹配结果
-                        result_record = {
-                            '企业代码': row.get('newgcid', ''),
-                            '匹配行业': '',
-                            '行业代码': '',
-                            '门类代码': '',
-                            '大类代码': '',
-                            '大类': '',
-                            '经营范围': row.get('经营范围', ''),
-                            '相似度': 0.0,
-                            'newgcid': '',
-                            '行业小类': '',
-                            '企业名称': row.get('企业名称', ''),
-                            '统一社会信用代码': row.get('统一社会信用代码', ''),
-                            '匹配片段': '',
-                            '数据来源': chunk_name
-                        }
-                        
-                        all_results.append(result_record)
-                
-                self.stats['processed_enterprises'] += len(valid_chunk_df)
-                
-                log_info(f"分块 {chunk_name} 处理完成，匹配 {len([r for r in match_results if r])} 条")
-                
-                # 每1000个chunks输出一次结果
-                if chunk_counter % 1000 == 0:
-                    log_info(f"已处理 {chunk_counter} 个chunks，开始输出第 {output_counter} 批结果...")
-                    
-                    # 保存当前批次的结果
-                    if all_results:
-                        batch_output_file = f"{self.config.data.output_file.rsplit('.', 1)[0]}_batch_{output_counter}.csv"
-                        temp_output_file = self.data_processor.save_results(all_results, batch_output_file)
-                        log_info(f"第 {output_counter} 批结果已保存到: {temp_output_file}")
-                        
-                        # 打印当前批次统计信息
-                        current_time = time.time() - start_time
-                        log_info(f"当前批次统计 - 已处理: {self.stats['processed_enterprises']:,} 条, 已匹配: {self.stats['matched_enterprises']:,} 条")
-                        log_info(f"当前耗时: {current_time:.2f}秒, 平均速度: {self.stats['processed_enterprises']/max(current_time, 1):.2f} 条/秒")
-                        
-                        output_counter += 1
-                        # 清空结果列表以释放内存
-                        all_results = []
-            
-            # 处理剩余的结果（如果有的话）
-            if all_results:
-                log_info(f"处理剩余的 {len(all_results)} 条结果...")
-                final_output_file = f"{self.config.data.output_file.rsplit('.', 1)[0]}_batch_{output_counter}.csv"
-                temp_output_file = self.data_processor.save_results(all_results, final_output_file)
-                log_info(f"最终批次结果已保存到: {temp_output_file}")
-            
+                            # 无匹配结果
+                            result_record = {
+                                '企业代码': row.get('newgcid', ''),
+                                '匹配行业': '',
+                                '行业代码': '',
+                                '门类代码': '',
+                                '大类代码': '',
+                                '大类': '',
+                                'jing_ying_fan_wei': row.get('经营范围', ''),
+                                '相似度': 0.0,
+                                '行业小类': '',
+                                '企业名称': row.get('qi_ye_ming_cheng', ''),
+                                '匹配片段': '',
+                                '数据来源': chunk_name
+                            }
+                            per_chunk_results.append(result_record)
+
+                    dump(per_chunk_results, result_path)
+                    log_info(f"分块 {chunk_name} 结果已保存到: {result_path} (共 {len(per_chunk_results)} 条)")
+                    return (chunk_name, len(valid_chunk_df), matched_count_local)
+                except Exception as e:
+                    log_error(f"保存分块结果失败/处理失败 {chunk_name}: {e}")
+                    return (chunk_name, 0, 0)
+
+            # 并行处理所有需要处理的分块
+            if files_to_process:
+                log_info(f"开始并行处理 {len(files_to_process)} 个分块 (n_jobs=4)...")
+                results = Parallel(n_jobs=4)(
+                    delayed(_process_one_chunk)(cf) for cf in files_to_process
+                )
+                for chunk_name, processed_count, matched_count in results:
+                    self.stats['processed_enterprises'] += processed_count
+                    self.stats['matched_enterprises'] += matched_count
+
             self.stats['process_time'] = time.time() - start_time
+            chunk_counter = len(chunk_files)
             log_info(f"企业数据处理完成，耗时: {self.stats['process_time']:.2f}秒")
-            log_info(f"总共输出了 {output_counter if all_results else output_counter-1} 个批次文件")
-            
-            return []  # 返回空列表，因为结果已经分批保存
-            
+            log_info(f"总共输出了 {len(files_to_process)} 个新分块结果（joblib文件），已有 {len(chunk_files) - len(files_to_process)} 个分块已存在结果")
+            return []  # 结果已按分块保存（joblib）
         except Exception as e:
             log_exception(f"企业数据处理失败: {e}")
             raise
@@ -314,10 +361,32 @@ class JobMatcher:
                 return False
             
             # 4. 处理企业数据（结果已在处理过程中分批保存）
-            results = self.process_enterprises()
+            self.process_enterprises()
             
-            # 5. 结果已在处理过程中分批保存，无需再次保存
-            log_info("所有结果已分批保存完成")
+            # 5. 汇总分块结果并保存到单个CSV
+            results_dir = os.path.join(self.config.data.chunks_dir, "results_joblib")
+            all_results = []
+            if os.path.isdir(results_dir):
+                result_files = [f for f in os.listdir(results_dir) if f.endswith("_result.joblib")]
+                result_files.sort()
+                for rf in result_files:
+                    rp = os.path.join(results_dir, rf)
+                    try:
+                        part = load(rp)
+                        if isinstance(part, list):
+                            all_results.extend(part)
+                        else:
+                            log_warning(f"结果文件格式异常（非列表），已跳过: {rf}")
+                    except Exception as e:
+                        log_warning(f"加载分块结果失败，已跳过 {rf}: {e}")
+            else:
+                log_warning(f"未找到结果目录: {results_dir}")
+            
+            if all_results:
+                output_path = self.save_results(all_results)
+                log_info(f"已汇总并保存至CSV: {output_path}")
+            else:
+                log_warning("没有可汇总的分块结果，跳过CSV导出")
             
             # 6. 统计信息
             self.stats['total_time'] = time.time() - total_start_time

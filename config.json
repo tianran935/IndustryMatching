@@ -27,7 +27,8 @@
     "data": {
         "industry_file": "./data/国民经济分类_2.14.csv",
         "chunks_dir": "./chunks",
-        "output_file": "./matching_results.csv",
+        "input_file": "./data/企业数据.xlsx",
+        "output_dir": "./output",
         "encoding": "utf-8"
     },
     "log": {
