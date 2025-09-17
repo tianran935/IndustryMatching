@@ -410,6 +410,9 @@ def create_config_from_args(args) -> Config:
     if args.industry_file:
         config.data.industry_file = args.industry_file
     
+    if args.input_file:
+        config.data.input_file = args.input_file
+    
     if args.chunks_dir:
         config.data.chunks_dir = args.chunks_dir
     
@@ -437,6 +440,8 @@ def main():
     # 数据文件参数
     parser.add_argument('--industry-file', type=str, 
                        help='行业分类文件路径')
+    parser.add_argument('--input-file', type=str,
+                       help='企业数据输入文件路径')
     parser.add_argument('--chunks-dir', type=str,
                        help='企业数据分块目录')
     parser.add_argument('--output-file', type=str,
