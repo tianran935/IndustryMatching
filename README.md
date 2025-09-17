@@ -57,6 +57,7 @@
 ## 🏗️ 核心模块说明
 
 ### 1. 配置管理 (config.py)
+
 - `ModelConfig`: 模型相关配置（模型名称、批处理大小、设备等）
 - `FAISSConfig`: FAISS索引配置（索引类型、归一化等）
 - `ProcessingConfig`: 数据处理配置（批处理大小、缓存设置等）
@@ -64,23 +65,27 @@
 - `LogConfig`: 日志配置（日志级别、输出格式等）
 
 ### 2. 日志管理 (logger.py)
+
 - 统一的日志记录接口
 - 支持控制台和文件输出
 - 可配置的日志级别和格式
 - 异常追踪和性能监控
 
 ### 3. 数据处理 (data_processor.py)
+
 - `TextCleaner`: 文本清理和预处理
 - `DataLoader`: 数据文件加载和验证
 - `BusinessScopeProcessor`: 经营范围文本处理
 - `DataProcessor`: 数据处理主类
 
 ### 4. 匹配器 (matcher.py)
+
 - `ModelManager`: BGE模型管理和加载
 - `FAISSIndexManager`: FAISS索引构建和管理
 - `OptimizedMatcher`: 优化的匹配器主类
 
 ### 5. 主程序 (main.py)
+
 - `JobMatcher`: 工作匹配器主类
 - 完整的匹配流程控制
 - 命令行参数支持
@@ -98,6 +103,7 @@
 ### 安装依赖
 
 #### 方法1: 使用requirements文件（推荐）
+
 ```bash
 # 克隆项目
 git clone <repository-url>
@@ -108,11 +114,13 @@ pip install -r requirements.txt
 ```
 
 #### 方法2: 手动安装核心依赖
+
 ```bash
 pip install torch sentence-transformers faiss-cpu pandas numpy tqdm joblib
 ```
 
 #### GPU版本（可选，性能更好）
+
 ```bash
 # 先安装基础依赖
 pip install -r requirements.txt
@@ -129,11 +137,13 @@ pip install faiss-gpu --force-reinstall
 ### 配置设置
 
 复制配置示例文件并根据需要修改：
+
 ```bash
 cp config_example.json config.json
 ```
 
 主要配置项：
+
 ```json
 {
   "model": {
@@ -155,7 +165,9 @@ cp config_example.json config.json
 ## 📖 使用方法
 
 ### 1. 环境测试
+
 首先运行测试脚本确保环境正常：
+
 ```bash
 python test_bge_faiss.py
 ```
@@ -163,6 +175,7 @@ python test_bge_faiss.py
 ### 2. 运行匹配程序
 
 #### 基础用法
+
 ```bash
 # 使用默认配置
 python main.py
@@ -175,6 +188,7 @@ python main.py --output custom_results.csv
 ```
 
 #### 高级用法
+
 ```bash
 # 启用详细日志
 python main.py --log-level DEBUG
@@ -190,18 +204,18 @@ python main.py --batch-size 1000
 
 匹配完成后，结果将保存在指定的CSV文件中，包含以下字段：
 
-| 字段名 | 描述 |
-|--------|------|
-| 企业名称 | 企业名称 |
-| 企业代码 | 企业统一社会信用代码 |
-| 经营范围 | 企业经营范围描述 |
-| 匹配行业 | 匹配到的行业名称 |
+| 字段名   | 描述               |
+| -------- | ------------------ |
+| 企业名称 | 企业名称           |
+| 企业代码 | newcid             |
+| 经营范围 | 企业经营范围描述   |
+| 匹配行业 | 匹配到的行业名称   |
 | 行业代码 | 对应的行业分类代码 |
-| 门类代码 | 行业门类代码 |
-| 大类代码 | 行业大类代码 |
-| 大类 | 行业大类名称 |
-| 相似度 | 匹配相似度分数 |
-| 数据来源 | 数据来源标识 |
+| 门类代码 | 行业门类代码       |
+| 大类代码 | 行业大类代码       |
+| 大类     | 行业大类名称       |
+| 相似度   | 匹配相似度分数     |
+| 数据来源 | 数据来源标识       |
 
 ## 🔧 API 文档
 
@@ -265,14 +279,15 @@ results = matcher.match_batch(business_scopes, top_k=5)
 在标准配置下的性能表现：
 
 | 数据规模 | 处理时间 | 内存使用 | 准确率 |
-|----------|----------|----------|--------|
-| 1K企业 | ~5秒 | ~2GB | >90% |
-| 10K企业 | ~30秒 | ~4GB | >90% |
-| 100K企业 | ~5分钟 | ~8GB | >90% |
+| -------- | -------- | -------- | ------ |
+| 1K企业   | ~5秒     | ~2GB     | >90%   |
+| 10K企业  | ~30秒    | ~4GB     | >90%   |
+| 100K企业 | ~5分钟   | ~8GB     | >90%   |
 
 ## 🧪 测试
 
 运行测试套件：
+
 ```bash
 # 基础功能测试
 python test_bge_faiss.py
@@ -293,6 +308,7 @@ python test_project.py
 - **性能日志**: 记录处理时间和资源使用情况
 
 日志级别：
+
 - `DEBUG`: 详细调试信息
 - `INFO`: 一般信息（默认）
 - `WARNING`: 警告信息
@@ -335,18 +351,21 @@ python test_project.py
 ## 🔄 更新日志
 
 ### v1.2.0 (最新)
+
 - ✨ 增加批处理大小优化
 - 🐛 修复 SentenceTransformer 兼容性问题
 - 📊 改进结果输出格式
 - 🚀 性能提升 15-20%
 
 ### v1.1.0
+
 - ✨ 添加 FAISS 索引支持
 - 🏗️ 重构代码架构
 - 📝 完善日志系统
 - 🔧 添加配置管理
 
 ### v1.0.0
+
 - 🎉 初始版本发布
 - 🤖 基础 BGE 模型集成
 - 📊 企业行业匹配功能
