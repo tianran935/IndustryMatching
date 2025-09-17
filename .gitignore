@@ -5,6 +5,8 @@ __pycache__/
 ./data/chunks/
 ./chunks
 *.csv
+# 仅跟踪特定的行业分类数据文件
+!/data/国民经济分类_2.14.csv
 # C extensions
 *.so
 
