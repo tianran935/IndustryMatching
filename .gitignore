@@ -247,4 +247,7 @@ config_prod.json
 
 # Large model files
 models/
+# Track models directory and all its contents (override previous ignores)
+!/models/
+!/models/**
 checkpoints/
